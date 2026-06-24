@@ -1,40 +1,63 @@
 #!/usr/bin/env bash
-# Deploy the InspectFlowAI stack with AWS SAM.
+# Deploy the InspectFlowAI stack using the AWS CLI (no SAM CLI required).
 #
 # Prereqs:
-#   - AWS SAM CLI installed (https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
-#   - Learner Lab credentials exported (copy them from "AWS Details" in the lab)
+#   - AWS CLI installed
+#   - Learner Lab credentials exported in this shell (copy them from the lab's
+#     "AWS Details"); paste the 3 export lines, then run this script.
 #
-# Usage:
-#   LAB_ROLE_ARN="arn:aws:iam::123456789012:role/LabRole" \
-#   QC_EMAIL="you@example.com" \
-#   SOURCE_BUCKET="inspectflow-source-yourname" \
-#   INSPECTED_BUCKET="inspectflow-inspected-yourname" \
-#   EXPECTED_LABELS="screw,bracket,label" \
+# Zero-config usage (recommended) -- everything is derived from your account:
+#   ./scripts/deploy.sh
+#
+# Optional overrides:
+#   QC_EMAIL="you@example.com" \          # enables the SNS email subscription
+#   EXPECTED_LABELS="hardware|machine|motor,qr code" \
 #   ./scripts/deploy.sh
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-: "${LAB_ROLE_ARN:?Set LAB_ROLE_ARN (IAM > Roles > LabRole ARN)}"
-: "${QC_EMAIL:?Set QC_EMAIL (Quality Control notification email)}"
-SOURCE_BUCKET="${SOURCE_BUCKET:-inspectflow-source-bucket}"
-INSPECTED_BUCKET="${INSPECTED_BUCKET:-inspectflow-inspected-bucket}"
-EXPECTED_LABELS="${EXPECTED_LABELS:-screw,bracket,label}"
-MIN_CONFIDENCE="${MIN_CONFIDENCE:-80}"
-STACK_NAME="${STACK_NAME:-inspectflow-ai}"
 REGION="${AWS_REGION:-us-east-1}"
+STACK_NAME="${STACK_NAME:-inspectflow-ai}"
 
-echo "Building..."
-sam build
+# 1. Verify credentials and learn the account id.
+echo "Checking AWS credentials..."
+if ! ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text 2>/dev/null)"; then
+  echo "ERROR: AWS credentials are missing or expired." >&2
+  echo "Open the Learner Lab, click 'AWS Details', and paste the 3 export lines" >&2
+  echo "(AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN) into this shell." >&2
+  exit 1
+fi
+echo "  account: $ACCOUNT_ID  region: $REGION"
 
-echo "Deploying stack '$STACK_NAME' to $REGION..."
-sam deploy \
+# 2. Derive sensible defaults (override via env vars if you like).
+LAB_ROLE_ARN="${LAB_ROLE_ARN:-arn:aws:iam::${ACCOUNT_ID}:role/LabRole}"
+SOURCE_BUCKET="${SOURCE_BUCKET:-inspectflow-source-${ACCOUNT_ID}}"
+INSPECTED_BUCKET="${INSPECTED_BUCKET:-inspectflow-inspected-${ACCOUNT_ID}}"
+DEPLOY_BUCKET="${DEPLOY_BUCKET:-inspectflow-deploy-${ACCOUNT_ID}-${REGION}}"
+EXPECTED_LABELS="${EXPECTED_LABELS:-hardware|machine|motor,qr code}"
+MIN_CONFIDENCE="${MIN_CONFIDENCE:-80}"
+QC_EMAIL="${QC_EMAIL:-}"   # optional; blank = no SNS subscription created
+
+# 3. Ensure a bucket exists to hold the packaged Lambda code.
+if ! aws s3 ls "s3://${DEPLOY_BUCKET}" --region "$REGION" >/dev/null 2>&1; then
+  echo "Creating deploy bucket ${DEPLOY_BUCKET}..."
+  aws s3 mb "s3://${DEPLOY_BUCKET}" --region "$REGION"
+fi
+
+# 4. Package (zips lambda/ and uploads it) then deploy via CloudFormation.
+echo "Packaging..."
+aws cloudformation package \
+  --template-file template.yaml \
+  --s3-bucket "$DEPLOY_BUCKET" \
+  --output-template-file packaged.yaml >/dev/null
+
+echo "Deploying stack '$STACK_NAME'..."
+aws cloudformation deploy \
+  --template-file packaged.yaml \
   --stack-name "$STACK_NAME" \
   --region "$REGION" \
-  --resolve-s3 \
-  --no-confirm-changeset \
-  --no-fail-on-empty-changeset \
+  --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
   --parameter-overrides \
     LabRoleArn="$LAB_ROLE_ARN" \
     NotificationEmail="$QC_EMAIL" \
@@ -44,5 +67,14 @@ sam deploy \
     MinConfidence="$MIN_CONFIDENCE"
 
 echo
-echo "Done. IMPORTANT: confirm the SNS subscription email sent to $QC_EMAIL."
-echo "Then upload an image to s3://$SOURCE_BUCKET to trigger an inspection."
+echo "Done."
+echo "  Source bucket   : $SOURCE_BUCKET   (upload widget images here)"
+echo "  Inspected bucket: $INSPECTED_BUCKET"
+echo "  Rule            : EXPECTED_LABELS='$EXPECTED_LABELS'"
+if [[ -n "$QC_EMAIL" ]]; then
+  echo "  IMPORTANT: confirm the SNS subscription email sent to $QC_EMAIL."
+else
+  echo "  (No QC email set — re-run with QC_EMAIL=you@example.com to enable notifications.)"
+fi
+echo
+echo "Try it:  ./scripts/demo.sh dataset/01-compliant/compliant-pcb.png"

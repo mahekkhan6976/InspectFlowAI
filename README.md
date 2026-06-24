@@ -88,37 +88,59 @@ docs/SPEAKER_NOTES.md                  # Word-for-word speaker script + Q&A prep
 | `INSPECTED_PREFIX` | `inspected` | Folder prefix in the inspected bucket |
 | `SNS_TOPIC_ARN` | `arn:aws:sns:us-east-1:...:inspectflow-quality-control` | QC notifications |
 
-## Option A — Deploy with one command (AWS SAM)
+## Quick start — do everything with one script
 
-This is the fastest path and is reproducible. The template uses the Learner Lab's
-existing **LabRole** (the lab blocks creating new IAM roles), so pass its ARN.
+After exporting your Learner Lab credentials (lab → "AWS Details" → paste the 3
+`export` lines), run:
 
 ```bash
-# 1. Install the SAM CLI (one time): https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
-# 2. Export your Learner Lab credentials (copy from "AWS Details" in the lab).
-# 3. Deploy:
-LAB_ROLE_ARN="arn:aws:iam::ACCOUNT_ID:role/LabRole" \
-QC_EMAIL="you@example.com" \
-SOURCE_BUCKET="inspectflow-source-yourname" \
-INSPECTED_BUCKET="inspectflow-inspected-yourname" \
-EXPECTED_LABELS="screw,bracket,label" \
-./scripts/deploy.sh
+./run.sh
 ```
 
-Then **confirm the SNS subscription email**, upload an image to the source
-bucket, and watch the pipeline run. To remove everything and protect your
-budget:
+This verifies credentials, deploys the full stack, waits until it's ready,
+uploads the entire labeled dataset (one live inspection per image), prints the
+PASS/FAIL matrix, and shows you where the buckets, logs, and dashboard are.
+Add `QC_EMAIL="you@example.com"` to also enable email notifications. Re-running
+is safe (idempotent).
+
+The sections below explain the individual pieces if you want finer control.
+
+## Option A — Deploy with one command (AWS CLI)
+
+Uses only the AWS CLI (no SAM CLI needed). The template uses the Learner Lab's
+existing **LabRole** (the lab blocks creating new IAM roles); the script derives
+its ARN from your account automatically.
 
 ```bash
-SOURCE_BUCKET="inspectflow-source-yourname" \
-INSPECTED_BUCKET="inspectflow-inspected-yourname" \
+# 1. Export your Learner Lab credentials: open the lab, click "AWS Details",
+#    and paste the 3 export lines (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
+#    AWS_SESSION_TOKEN) into your shell.
+# 2. Deploy (zero config — buckets are named with your account id):
+./scripts/deploy.sh
+
+# Optional: enable QC email notifications and/or a custom rule:
+QC_EMAIL="you@example.com" EXPECTED_LABELS="hardware|machine|motor,qr code" ./scripts/deploy.sh
+```
+
+If you see `AWS credentials are missing or expired`, your lab session lapsed —
+re-copy the credentials from "AWS Details" and run it again.
+
+Then (if you set `QC_EMAIL`) **confirm the SNS subscription email**, upload an
+image to the source bucket, and watch the pipeline run. To remove everything and
+protect your budget (uses the same account-derived names):
+
+```bash
+ACCT=$(aws sts get-caller-identity --query Account --output text)
+DEPLOY_BUCKET="inspectflow-deploy-$ACCT-us-east-1" \
+SOURCE_BUCKET="inspectflow-source-$ACCT" \
+INSPECTED_BUCKET="inspectflow-inspected-$ACCT" \
 ./scripts/teardown.sh
 ```
 
 The whole stack (`template.yaml`) creates the source bucket + S3→SQS
 notification, the queue + DLQ + access policy, the inspected bucket with the
-3-year Glacier lifecycle, the SNS topic + subscription, and the Lambda with its
-SQS trigger and environment variables.
+3-year Glacier lifecycle, the SNS topic + subscription, the Lambda with its SQS
+trigger, and the CloudWatch dashboard + DLQ alarm.
 
 ## Option B — Setup via the AWS Console
 
