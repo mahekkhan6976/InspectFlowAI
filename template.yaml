@@ -1,0 +1,244 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  InspectFlowAI - Serverless widget inspection pipeline.
+  S3 (source) -> SQS (+DLQ) -> Lambda -> Rekognition -> S3 (inspected, 3yr Glacier) + SNS (QC group).
+  Designed for the AWS Academy Learner Lab: it uses the existing LabRole instead
+  of creating IAM roles (the lab blocks IAM role creation).
+
+Parameters:
+  LabRoleArn:
+    Type: String
+    Description: >
+      ARN of the existing Learner Lab execution role (find it under IAM > Roles >
+      LabRole). Example: arn:aws:iam::123456789012:role/LabRole
+
+  SourceBucketName:
+    Type: String
+    Description: Globally-unique name for the assembly-line image upload bucket.
+    Default: inspectflow-source-bucket
+
+  InspectedBucketName:
+    Type: String
+    Description: Globally-unique name for the inspected/compliance archive bucket.
+    Default: inspectflow-inspected-bucket
+
+  NotificationEmail:
+    Type: String
+    Default: ""
+    Description: >
+      Optional email for the Quality Control group. If provided, an SNS email
+      subscription is created (you must confirm it). Leave blank to deploy now
+      and subscribe later.
+
+  ExpectedLabels:
+    Type: String
+    Description: Comma-separated components that must be present for a PASS.
+    Default: "screw,bracket,label"
+
+  MinConfidence:
+    Type: Number
+    Description: Minimum Rekognition confidence (%) for a label to count.
+    Default: 80
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref NotificationEmail, ""]]
+
+Resources:
+
+  # --- Dead Letter Queue: catches images that repeatedly fail inspection ---
+  InspectionDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: inspectflow-dlq
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # --- Main queue: decouples S3 uploads from Lambda processing ---
+  InspectionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: inspectflow-queue
+      VisibilityTimeout: 180  # >= 6x the Lambda timeout
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt InspectionDLQ.Arn
+        maxReceiveCount: 3
+
+  # --- Allow S3 to send the PUT event to the queue (the professor's policy fix) ---
+  InspectionQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref InspectionQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Id: InspectFlowAI-SQS-Policy
+        Statement:
+          - Sid: __sender_statement
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: SQS:SendMessage
+            Resource: !GetAtt InspectionQueue.Arn
+            Condition:
+              ArnLike:
+                # Built from the name (not !GetAtt) to avoid a circular dependency.
+                aws:SourceArn: !Sub "arn:aws:s3:::${SourceBucketName}"
+
+  # --- Source bucket: where the assembly-line camera uploads images ---
+  SourceBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: InspectionQueuePolicy
+    Properties:
+      BucketName: !Ref SourceBucketName
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt InspectionQueue.Arn
+
+  # --- Inspected bucket: archive + 3-year compliance retention ---
+  InspectedBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref InspectedBucketName
+      LifecycleConfiguration:
+        Rules:
+          - Id: Compliance-3yr-retention
+            Status: Enabled
+            Prefix: inspected/
+            Transitions:
+              - StorageClass: GLACIER
+                TransitionInDays: 30
+            ExpirationInDays: 1095
+
+  # --- SNS topic that notifies the Quality Control group ---
+  QualityControlTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: inspectflow-quality-control
+      Subscription: !If
+        - HasEmail
+        - - Protocol: email
+            Endpoint: !Ref NotificationEmail
+        - !Ref AWS::NoValue
+
+  # --- The inspection Lambda ---
+  InspectionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: inspectflow-inspection
+      CodeUri: lambda/
+      Handler: inspection_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 256
+      Role: !Ref LabRoleArn
+      Environment:
+        Variables:
+          EXPECTED_LABELS: !Ref ExpectedLabels
+          MIN_CONFIDENCE: !Ref MinConfidence
+          INSPECTED_BUCKET: !Ref InspectedBucketName
+          INSPECTED_PREFIX: inspected
+          SNS_TOPIC_ARN: !Ref QualityControlTopic
+      Events:
+        FromQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt InspectionQueue.Arn
+            BatchSize: 10
+
+  # --- Monitoring: alarm when an image fails inspection 3x and hits the DLQ ---
+  DeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: inspectflow-dlq-not-empty
+      AlarmDescription: A widget image failed inspection repeatedly and landed in the DLQ.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt InspectionDLQ.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref QualityControlTopic
+
+  # --- Monitoring: single-pane dashboard for the support team ---
+  InspectionDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: InspectFlowAI
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric", "x": 0, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda - Invocations / Errors",
+                "region": "${AWS::Region}",
+                "view": "timeSeries", "period": 60,
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "inspectflow-inspection", { "stat": "Sum" } ],
+                  [ "AWS/Lambda", "Errors", "FunctionName", "inspectflow-inspection", { "stat": "Sum" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 0, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda - Duration (ms)",
+                "region": "${AWS::Region}",
+                "view": "timeSeries", "period": 60,
+                "metrics": [
+                  [ "AWS/Lambda", "Duration", "FunctionName", "inspectflow-inspection", { "stat": "Average" } ],
+                  [ "AWS/Lambda", "Duration", "FunctionName", "inspectflow-inspection", { "stat": "Maximum" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "SQS - Inspection queue",
+                "region": "${AWS::Region}",
+                "view": "timeSeries", "period": 60,
+                "metrics": [
+                  [ "AWS/SQS", "NumberOfMessagesSent", "QueueName", "inspectflow-queue", { "stat": "Sum" } ],
+                  [ "AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "inspectflow-queue", { "stat": "Maximum" } ]
+                ]
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "DLQ - Failed inspections",
+                "region": "${AWS::Region}",
+                "view": "timeSeries", "period": 60,
+                "metrics": [
+                  [ "AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "inspectflow-dlq", { "stat": "Maximum" } ]
+                ]
+              }
+            }
+          ]
+        }
+
+Outputs:
+  SourceBucket:
+    Description: Upload widget images here to start an inspection.
+    Value: !Ref SourceBucket
+  InspectedBucket:
+    Description: Inspected images + JSON reports land here (3yr Glacier).
+    Value: !Ref InspectedBucket
+  InspectionQueueUrl:
+    Value: !Ref InspectionQueue
+  DeadLetterQueueUrl:
+    Value: !Ref InspectionDLQ
+  QualityControlTopicArn:
+    Value: !Ref QualityControlTopic
+  FunctionName:
+    Value: !Ref InspectionFunction
+  DashboardName:
+    Description: CloudWatch dashboard for the support team.
+    Value: !Ref InspectionDashboard

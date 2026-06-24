@@ -1,0 +1,12 @@
+# CloudFormation/SAM build artifacts
+packaged.yaml
+.aws-sam/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Rendered slides (regenerate from docs/slides.md or slides.html)
+docs/slides.pdf

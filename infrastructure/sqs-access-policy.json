@@ -1,0 +1,33 @@
+{
+  "Version": "2012-10-17",
+  "Id": "InspectFlowAI-SQS-Policy",
+  "Statement": [
+    {
+      "Sid": "__sender_statement",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "s3.amazonaws.com"
+      },
+      "Action": "SQS:SendMessage",
+      "Resource": "arn:aws:sqs:us-east-1:ACCOUNT_ID:inspectflow-queue",
+      "Condition": {
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:s3:::inspectflow-source-bucket"
+        }
+      }
+    },
+    {
+      "Sid": "__receiver_statement",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "s3.amazonaws.com"
+      },
+      "Action": [
+        "SQS:ChangeMessageVisibility",
+        "SQS:DeleteMessage",
+        "SQS:ReceiveMessage"
+      ],
+      "Resource": "arn:aws:sqs:us-east-1:ACCOUNT_ID:inspectflow-queue"
+    }
+  ]
+}

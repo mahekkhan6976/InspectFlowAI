@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>InspectFlowAI — Serverless Widget Inspection</title>
+<style>
+  :root { --bg:#0f172a; --fg:#e2e8f0; --accent:#38bdf8; --muted:#94a3b8; --card:#1e293b; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:#020617; color:var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .deck { }
+  .slide {
+    min-height: 100vh; width: 100%; padding: 6vh 8vw; display:flex; flex-direction:column;
+    justify-content:center; border-bottom: 1px solid #1e293b; scroll-snap-align:start;
+    background: linear-gradient(160deg, #0f172a, #020617);
+  }
+  .deck { scroll-snap-type: y mandatory; }
+  h1 { font-size: 3rem; margin:0 0 .4em; color:#fff; }
+  h2 { font-size: 2rem; margin:0 0 .6em; color:var(--accent); }
+  h3 { color:#fff; margin:.2em 0; }
+  p, li, td, th { font-size: 1.15rem; line-height:1.5; }
+  small { color:var(--muted); }
+  .lead { align-items:center; text-align:center; }
+  table { border-collapse: collapse; width:100%; margin-top:.5em; }
+  th, td { border:1px solid #334155; padding:.5em .7em; text-align:left; }
+  th { background:#1e293b; color:var(--accent); }
+  code, pre { background:#0b1220; border:1px solid #1e293b; border-radius:8px; }
+  code { padding:.1em .35em; color:#7dd3fc; }
+  pre { padding:1em; overflow:auto; font-size:1rem; }
+  .imgrow { display:flex; gap:2vw; align-items:center; justify-content:center; flex-wrap:wrap; }
+  .imgrow img { max-width:42%; border-radius:10px; border:1px solid #334155; }
+  .full { max-width:90%; border-radius:10px; border:1px solid #334155; align-self:center; }
+  .pill { display:inline-block; padding:.15em .6em; border-radius:999px; font-weight:700; }
+  .pass { background:#064e3b; color:#6ee7b7; }
+  .fail { background:#7f1d1d; color:#fca5a5; }
+  .hint { position:fixed; bottom:10px; right:14px; font-size:.8rem; color:#475569; }
+  @media print {
+    .slide { min-height: 100vh; page-break-after: always; border:none; }
+    .hint { display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+
+  <section class="slide lead">
+    <h1>InspectFlowAI</h1>
+    <h2>Serverless Object-Detection Inspection on AWS</h2>
+    <p>Automating Company X's manual widget quality inspection</p>
+    <p><small>Team project &middot; ITC6450 &middot; AWS Academy Learner Lab</small></p>
+  </section>
+
+  <section class="slide">
+    <h2>The problem</h2>
+    <p>Company X inspects widgets <b>manually</b> today:</p>
+    <ol>
+      <li>Worker photographs the widget on the assembly line</li>
+      <li>An inspector checks that every required component is present</li>
+      <li>Results are emailed to the Quality Control group</li>
+      <li>Image + results are filed in an "inspected" folder</li>
+      <li>Everything is retained <b>3 years</b> for compliance</li>
+    </ol>
+    <p><b>Goal:</b> fully automate this — serverless and event-driven.</p>
+  </section>
+
+  <section class="slide">
+    <h2>Our architecture</h2>
+    <img class="full" src="architecture.png" alt="architecture diagram" />
+    <p><small>S3 (upload) → SQS (+DLQ) → Lambda → Rekognition → S3 archive (Glacier) + SNS → QC group. CloudWatch monitors every step.</small></p>
+  </section>
+
+  <section class="slide">
+    <h2>Why each component</h2>
+    <table>
+      <tr><th>Component</th><th>Role</th></tr>
+      <tr><td>S3 (source)</td><td>Event source: camera drops the image here</td></tr>
+      <tr><td>SQS + DLQ</td><td>Decouples &amp; buffers; failed images go to the DLQ</td></tr>
+      <tr><td>Lambda</td><td>The "inspector" — runs only on demand</td></tr>
+      <tr><td>Rekognition</td><td>Detects components (the automated inspection)</td></tr>
+      <tr><td>S3 (inspected) + Glacier</td><td>Archive + 3-year compliance retention</td></tr>
+      <tr><td>SNS</td><td>Notifies the Quality Control group</td></tr>
+      <tr><td>CloudWatch</td><td>Monitoring/observability for support</td></tr>
+    </table>
+  </section>
+
+  <section class="slide">
+    <h2>How PASS / FAIL is decided</h2>
+    <pre><code>detected = rekognition.detect_labels(image)   # e.g. hardware, qr code, text
+missing  = [c for c in EXPECTED_LABELS
+            if c not in detected_names]
+status   = "PASS" if not missing else "FAIL"</code></pre>
+    <ul>
+      <li><code>EXPECTED_LABELS</code> is configurable (no code change to retune)</li>
+      <li>Image + JSON report archived to <code>inspected/pass/</code> or <code>inspected/fail/</code></li>
+      <li>SNS message sent with the result + any missing components</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h2>Requirements → how we met them</h2>
+    <table>
+      <tr><th>Requirement</th><th>Met by</th></tr>
+      <tr><td>Fully automated</td><td>S3 event → SQS → Lambda, zero human steps</td></tr>
+      <tr><td>Serverless + best practice</td><td>S3 / SQS / Lambda / Rekognition / SNS / Glacier</td></tr>
+      <tr><td>Event-based from the image</td><td>S3 <code>ObjectCreated</code> triggers everything</td></tr>
+      <tr><td>Image recognition</td><td>Rekognition <code>DetectLabels</code></td></tr>
+      <tr><td>Notify QC group</td><td>SNS topic + subscription</td></tr>
+      <tr><td>Store results + image</td><td>Inspected bucket, pass/fail folders</td></tr>
+      <tr><td>3-year retention</td><td>S3 lifecycle → Glacier, expire at 1095 days</td></tr>
+    </table>
+  </section>
+
+  <section class="slide">
+    <h2>Live demo — the two widgets</h2>
+    <div class="imgrow">
+      <img src="good-widget.png" alt="compliant widget" />
+      <img src="bad-widget.png" alt="defective widget" />
+    </div>
+    <p style="text-align:center">Compliant (left): hardware + QR label &nbsp;|&nbsp; Defective (right): missing bracket, label, screws</p>
+    <p style="text-align:center">A widget passes only if Rekognition finds <b>all</b> of <code>hardware, qr code</code>.</p>
+  </section>
+
+  <section class="slide">
+    <h2>Live demo — full dataset (9 images)</h2>
+    <table>
+      <tr><th>Scenario</th><th>Detected (sample)</th><th>Result</th></tr>
+      <tr><td>Compliant: plate / PCB / enclosure / module (×4)</td><td>Hardware, QR Code</td><td><span class="pill pass">PASS</span></td></tr>
+      <tr><td>Motor gearbox (synonym)</td><td>Machine, Motor, QR Code</td><td><span class="pill pass">PASS</span></td></tr>
+      <tr><td>Hardware only (bracket / plate)</td><td>Bracket, Screw / Aluminium</td><td><span class="pill fail">FAIL</span></td></tr>
+      <tr><td>Hardware + text, no QR</td><td>Text, Business Card</td><td><span class="pill fail">FAIL</span></td></tr>
+      <tr><td>QR sticker only / label only</td><td>QR Code / Document</td><td><span class="pill fail">FAIL</span></td></tr>
+      <tr><td>Non-widget (apple, volleyball)</td><td>Fruit / Ball</td><td><span class="pill fail">FAIL</span></td></tr>
+    </table>
+    <p style="text-align:center">Rule: <code>hardware|machine|motor, qr code</code> (<code>|</code> = synonyms). <b>5 PASS / 7 FAIL</b> — each failure names the missing component. Insight: rule vocabulary must match emitted labels → use <b>synonym groups</b> (or Custom Labels in production).</p>
+  </section>
+
+  <section class="slide">
+    <h2>Monitoring (support team)</h2>
+    <ul>
+      <li><b>CloudWatch dashboard <code>InspectFlowAI</code></b>: Lambda invocations/errors/duration, SQS queue depth, DLQ depth</li>
+      <li><b>Alarm <code>inspectflow-dlq-not-empty</code></b>: fires when an image fails inspection repeatedly and lands in the DLQ</li>
+      <li><b>CloudWatch Logs</b>: per-invocation bucket/key + PASS/FAIL trace</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h2>Security &amp; QA</h2>
+    <ul>
+      <li><b>SQS access policy</b>: only <code>s3.amazonaws.com</code> may send, scoped to our bucket</li>
+      <li><b>Least-privilege IAM</b> intent documented (Learner Lab uses <code>LabRole</code>)</li>
+      <li><b>Encryption</b> at rest (SSE) + in transit</li>
+      <li><b>Automated QA gate</b>: 9 unit tests (mocked AWS) run before deploy</li>
+      <li><b>Infrastructure as Code</b>: one-command deploy via CloudFormation/SAM</li>
+    </ul>
+  </section>
+
+  <section class="slide lead">
+    <h2>Wrap-up</h2>
+    <ul style="text-align:left">
+      <li>Fully automated, serverless, event-driven inspection — <b>deployed and working</b></li>
+      <li>Idles at ~$0 (no EC2/NAT) — well within the $50 lab budget</li>
+      <li>Future: Rekognition <b>Custom Labels</b> on real widgets; Step Functions for multi-stage inspection</li>
+    </ul>
+    <h1>Questions?</h1>
+  </section>
+
+</div>
+<div class="hint">Scroll to advance &middot; Print → Save as PDF for a deck</div>
+</body>
+</html>
