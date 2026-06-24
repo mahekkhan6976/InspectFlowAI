@@ -1,0 +1,4 @@
+# The Lambda runtime already includes boto3, so no packaging is needed for deploy.
+# These are only for the local test harness + unit tests.
+# Unit tests (tests/test_inspection.py) mock AWS and need no network.
+boto3>=1.34.0

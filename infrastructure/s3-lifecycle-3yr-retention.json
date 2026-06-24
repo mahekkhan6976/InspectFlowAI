@@ -1,0 +1,20 @@
+{
+  "Rules": [
+    {
+      "ID": "Compliance-3yr-retention",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "inspected/"
+      },
+      "Transitions": [
+        {
+          "Days": 30,
+          "StorageClass": "GLACIER"
+        }
+      ],
+      "Expiration": {
+        "Days": 1095
+      }
+    }
+  ]
+}
