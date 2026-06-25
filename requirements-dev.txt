@@ -1,0 +1,4 @@
+# Local development + CI. Runtime needs nothing: Lambda ships boto3.
+-r requirements.txt
+cfn-lint>=1.0
+shellcheck-py

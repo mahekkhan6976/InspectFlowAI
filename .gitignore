@@ -10,3 +10,9 @@ venv/
 
 # Rendered slides (regenerate from docs/slides.md or slides.html)
 docs/slides.pdf
+
+# OS / tooling noise
+.DS_Store
+.pytest_cache/
+.coverage
+htmlcov/
