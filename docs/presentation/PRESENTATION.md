@@ -6,7 +6,7 @@ Maps directly to the rubric:
 - **10%** Demonstration of the monitoring
 
 > This is the outline. For a word-for-word spoken script with timing and a Q&A
-> prep section, see `docs/SPEAKER_NOTES.md`.
+> prep section, see `docs/presentation/SPEAKER_NOTES.md`.
 
 ---
 

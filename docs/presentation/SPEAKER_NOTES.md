@@ -1,7 +1,7 @@
 # InspectFlowAI — Speaker Script & Q&A (15 minutes)
 
 Word-for-word-ish narration you can read or paraphrase. Times are cumulative.
-Pair this with `docs/slides.html` and the live console. Rubric weighting:
+Pair this with `docs/presentation/slides.html` and the live console. Rubric weighting:
 demo 70% / explanation 20% / monitoring 10% — so spend most time *showing it run*.
 
 > Before you start: redeploy (`./scripts/deploy.sh`), confirm the SNS email if

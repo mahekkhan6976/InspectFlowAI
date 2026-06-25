@@ -31,7 +31,7 @@ Company X inspects widgets **manually** today:
 
 ## Our architecture
 
-![w:1000](architecture.png)
+![w:1000](../architecture.png)
 
 S3 (upload) → SQS (+DLQ) → Lambda → Rekognition → S3 archive (Glacier) + SNS → QC group
 CloudWatch monitors every step.
@@ -83,7 +83,7 @@ status   = "PASS" if not missing else "FAIL"
 
 ## Live demo — the two widgets
 
-![w:430](good-widget.png) ![w:430](bad-widget.png)
+![w:430](../good-widget.png) ![w:430](../bad-widget.png)
 
 Compliant (left): hardware + QR label &nbsp;|&nbsp; Defective (right): missing bracket, label, screws
 
@@ -96,7 +96,7 @@ A widget passes only if Rekognition finds **all** of `hardware, qr code`.
 
 ---
 
-## Live demo — full dataset (9 images, every combination)
+## Live demo — full dataset (12 images, every combination)
 
 Rule: `EXPECTED_LABELS = hardware|machine|motor, qr code` (`|` = synonyms)
 
@@ -130,7 +130,7 @@ Insight: rule vocabulary must match the labels the model emits → we use
 - **SQS access policy**: only `s3.amazonaws.com` may send, scoped to our bucket
 - **Least-privilege IAM** intent documented (Learner Lab uses `LabRole`)
 - **Encryption** at rest (SSE) + in transit
-- **Automated QA gate**: 9 unit tests (mocked AWS) run before deploy
+- **Automated QA gate**: 11 unit tests (mocked AWS) run before deploy
 - **Infrastructure as Code**: one-command deploy via CloudFormation/SAM
 
 ---

@@ -66,7 +66,7 @@
 
   <section class="slide">
     <h2>Our architecture</h2>
-    <img class="full" src="architecture.png" alt="architecture diagram" />
+    <img class="full" src="../architecture.png" alt="architecture diagram" />
     <p><small>S3 (upload) → SQS (+DLQ) → Lambda → Rekognition → S3 archive (Glacier) + SNS → QC group. CloudWatch monitors every step.</small></p>
   </section>
 
@@ -114,8 +114,8 @@ status   = "PASS" if not missing else "FAIL"</code></pre>
   <section class="slide">
     <h2>Live demo — the two widgets</h2>
     <div class="imgrow">
-      <img src="good-widget.png" alt="compliant widget" />
-      <img src="bad-widget.png" alt="defective widget" />
+      <img src="../good-widget.png" alt="compliant widget" />
+      <img src="../bad-widget.png" alt="defective widget" />
     </div>
     <p style="text-align:center">Compliant (left): hardware + QR label &nbsp;|&nbsp; Defective (right): missing bracket, label, screws</p>
     <p style="text-align:center">A widget passes only if Rekognition finds <b>all</b> of <code>hardware, qr code</code>.</p>
