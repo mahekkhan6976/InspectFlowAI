@@ -10,10 +10,16 @@ Run:
 """
 
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
+
+# The handler creates its boto3 clients at import time, which needs a region.
+# Lambda always provides one; set a default here so the suite is hermetic and
+# runs without any local AWS configuration (e.g. in CI).
+os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lambda"))
 
