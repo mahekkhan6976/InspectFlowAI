@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Pre-demo readiness check for InspectFlowAI.
 # Verifies your tooling, credentials, and deployed stack so there are no
-# surprises during the live in-class demo.
+# surprises during a live demo.
 #
 # Usage:
 #   SOURCE_BUCKET="inspectflow-source-yourname" \

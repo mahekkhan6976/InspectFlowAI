@@ -20,6 +20,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from urllib.parse import unquote_plus
 
 import boto3
 from botocore.config import Config
@@ -216,6 +217,4 @@ def _notify(report):
 
 def _unquote_key(key):
     """S3 event keys are URL-encoded (spaces become '+', etc.)."""
-    from urllib.parse import unquote_plus
-
     return unquote_plus(key)

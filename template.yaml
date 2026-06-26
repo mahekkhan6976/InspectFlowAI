@@ -63,7 +63,7 @@ Resources:
         deadLetterTargetArn: !GetAtt InspectionDLQ.Arn
         maxReceiveCount: 3
 
-  # --- Allow S3 to send the PUT event to the queue (the professor's policy fix) ---
+  # --- Allow S3 (scoped to the source bucket) to send the PUT event to the queue ---
   InspectionQueuePolicy:
     Type: AWS::SQS::QueuePolicy
     Properties:
