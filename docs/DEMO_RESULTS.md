@@ -1,17 +1,17 @@
-# InspectFlowAI — Live Demo Results (evidence / backup)
+# InspectFlowAI — Captured live run
 
-Captured from a real run against the deployed stack in AWS account
-`425652524844`, region `us-east-1`. Keep this as a backup in case the live
-network/demo misbehaves during the presentation.
+Captured from a real run against the deployed stack in `us-east-1`, kept as
+evidence of the end-to-end flow (and as a backup for live demos).
 
-Configuration at run time:
-- `EXPECTED_LABELS = hardware|machine|motor, qr code`  (`|` = synonyms)
-- `MIN_CONFIDENCE = 80`
+Configuration at the time of this capture:
+- `EXPECTED_LABELS = hardware,qr code,text`
+- `MIN_CONFIDENCE = 75`
 
-A compliant widget must be recognizable **hardware** (Rekognition may call a
-mechanical assembly `Machine`/`Motor`) and carry a **scannable QR/label**. See
-`dataset/README.md` for the full 12-image matrix across every component
-combination (5 PASS / 7 FAIL).
+The rule was later tightened to `hardware|machine|motor,qr code` at 80%
+confidence: synonym groups were added (Rekognition labels a motor assembly
+`Machine`/`Motor`, not `Hardware`) and `text` was dropped because `DetectLabels`
+only emits it for large, prominent text. See `dataset/README.md` for the final
+12-image matrix (5 PASS / 7 FAIL) run with that rule.
 
 ## Case 1 — Compliant widget → PASS
 
@@ -30,33 +30,13 @@ plus Electronics / Computer / Business Card / Paper.
 }
 ```
 
-Archived to `s3://inspectflow-inspected-425652524844/inspected/pass/`.
+Archived to `s3://inspectflow-inspected-<ACCOUNT_ID>/inspected/pass/`.
 
 ## Case 2 — Non-compliant widget → FAIL
 
 ![bad widget](bad-widget.png)
 
 Missing the bracket, the label, and most screws. Rekognition detected only
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 `Aluminium`, `Mailbox`, `Ball/Volleyball` — none of the required components.
 
@@ -70,7 +50,7 @@ Missing the bracket, the label, and most screws. Rekognition detected only
 }
 ```
 
-Archived to `s3://inspectflow-inspected-425652524844/inspected/fail/`.
+Archived to `s3://inspectflow-inspected-<ACCOUNT_ID>/inspected/fail/`.
 
 ## CloudWatch log trace (both cases)
 

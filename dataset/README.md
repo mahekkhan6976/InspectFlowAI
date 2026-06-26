@@ -1,8 +1,7 @@
 # InspectFlowAI — Test Dataset & Results Matrix
 
 A labeled set of widget images covering every combination of the inspected
-components, all run through the **live** pipeline (AWS account `425652524844`,
-us-east-1).
+components, all run through the **live** deployed pipeline (us-east-1).
 
 ## Inspection rule
 
@@ -79,10 +78,13 @@ dataset/
 
 ## Re-run the whole dataset
 
+`./run.sh` (from the repository root) uploads every image, waits for the
+inspections, and prints this matrix from the live reports. By hand:
+
 ```bash
 while IFS= read -r f; do
   scen=$(basename "$(dirname "$f")"); base=$(basename "$f")
-  aws s3 cp "$f" "s3://inspectflow-source-425652524844/run/${scen}__${base}" --region us-east-1
+  aws s3 cp "$f" "s3://inspectflow-source-<ACCOUNT_ID>/run/${scen}__${base}" --region us-east-1
 done < <(find dataset -type f -name '*.png')
 ```
 
